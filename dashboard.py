@@ -431,13 +431,14 @@ st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
 # ======================================================================
 # SECTION 8: TABS
 # ======================================================================
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "OVERVIEW",
     "RESEARCH",
     "ML vs SMA",
-    "🧠 INTELLIGENCE"
+    "🧠 INTELLIGENCE",
+    "🏢 COMPANY",
+    "💬 COPILOT"
 ])
-
 
 # ======================================================================
 # TAB 1: OVERVIEW (replaces "Single Ticker")
@@ -997,6 +998,643 @@ with tab4:
     except Exception as e:
         st.error(f"Registry error: {e}")
 
+
+# ======================================================================
+# TAB 5: COMPANY INTELLIGENCE PAGE
+# ======================================================================
+with tab5:
+
+    # ── Company search ──
+    section("COMPANY INTELLIGENCE")
+
+    col_search, col_btn = st.columns([4, 1])
+    with col_search:
+        company_ticker = st.text_input(
+            "Enter ticker symbol",
+            value="AAPL",
+            placeholder="e.g. AAPL, NVDA, PHI, BDO...",
+            label_visibility="collapsed"
+        ).upper()
+    with col_btn:
+        run_company = st.button("▶  ANALYZE", key="company_btn")
+
+    if is_beginner:
+        st.markdown("""
+        <div style='font-family:DM Sans,sans-serif; font-size:0.83rem;
+                    color:#7b9bc0; margin-bottom:16px; line-height:1.5;'>
+            Type any stock ticker above and press Analyze.
+            We'll look up what the company does, how healthy its finances are,
+            and whether our system thinks it's worth watching right now.
+        </div>""", unsafe_allow_html=True)
+
+    if run_company or "company_report" not in st.session_state:
+        if run_company or st.session_state.get(
+                "company_ticker_last") != company_ticker:
+            with st.spinner(f"Generating intelligence report "
+                           f"for {company_ticker}..."):
+                try:
+                    from src.company_intelligence import (
+                        generate_company_report
+                    )
+                    report = generate_company_report(
+                        company_ticker, is_beginner)
+                    st.session_state["company_report"] = report
+                    st.session_state["company_ticker_last"] = \
+                        company_ticker
+                except Exception as e:
+                    st.error(f"Failed to generate report: {e}")
+                    report = None
+        else:
+            report = st.session_state.get("company_report")
+    else:
+        report = st.session_state.get("company_report")
+
+    if not report:
+        st.info("Enter a ticker symbol and press Analyze "
+                "to generate a company intelligence report.")
+    else:
+        f = report.get("fundamentals") or {}
+        t = report.get("technical")    or {}
+        bull = report.get("bull_case", [])
+        bear = report.get("bear_case", [])
+
+        # ── CONVICTION BANNER — the signature element ──
+        sig   = t.get("signal", "HOLD")
+        rsi   = t.get("rsi", 50)
+        reg   = t.get("regime", "UNKNOWN")
+        price = t.get("price", 0)
+        rat   = f.get("analyst_rating", "N/A")
+
+        if sig == "BUY" and "BUY" in rat:
+            conviction       = "STRONG OPPORTUNITY"
+            conv_color       = "#00d4aa"
+            conv_sub         = ("Technical signals and analyst consensus "
+                               "both point positive.")
+        elif sig == "BUY":
+            conviction       = "WORTH WATCHING"
+            conv_color       = "#00d4aa"
+            conv_sub         = ("Price signals are constructive. "
+                               "Mixed analyst view.")
+        elif sig == "AVOID" and "SELL" in rat:
+            conviction       = "HIGH RISK — AVOID"
+            conv_color       = "#ff4d6a"
+            conv_sub         = ("Both technical signals and analysts "
+                               "are cautious right now.")
+        elif sig == "AVOID":
+            conviction       = "CAUTION — RISKY ENVIRONMENT"
+            conv_color       = "#ff4d6a"
+            conv_sub         = (f"Currently in {reg} regime. "
+                               "Wait for better conditions.")
+        else:
+            conviction       = "NEUTRAL — MONITOR"
+            conv_color       = "#ffd166"
+            conv_sub         = ("No strong signal in either direction. "
+                               "Watch for a clearer setup.")
+
+        beginner_verdict = {
+            "STRONG OPPORTUNITY": "This looks like a potentially good time to research buying.",
+            "WORTH WATCHING":     "Worth keeping on your watchlist.",
+            "HIGH RISK — AVOID":  "Our system says to stay away for now.",
+            "CAUTION — RISKY ENVIRONMENT": "The market for this stock is turbulent — be careful.",
+            "NEUTRAL — MONITOR":  "No strong signal either way. Keep watching.",
+        }.get(conviction, "")
+
+        st.markdown(f"""
+        <div style='background:#0f2040;
+                    border:1px solid #1a3357;
+                    border-left:4px solid {conv_color};
+                    border-radius:8px; padding:22px 24px;
+                    margin-bottom:20px;'>
+            <div style='font-family:JetBrains Mono,monospace;
+                        font-size:0.6rem; color:#7b9bc0;
+                        letter-spacing:0.2em; margin-bottom:8px;'>
+                AURELINE LABS CONVICTION
+            </div>
+            <div style='font-family:Space Grotesk,sans-serif;
+                        font-size:1.6rem; font-weight:700;
+                        color:{conv_color}; letter-spacing:-0.5px;
+                        line-height:1;'>
+                {conviction}
+            </div>
+            <div style='font-family:DM Sans,sans-serif;
+                        font-size:0.85rem; color:#7b9bc0;
+                        margin-top:8px;'>
+                {beginner_verdict if is_beginner else conv_sub}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # ── Company header ──
+        name   = f.get("name", company_ticker)
+        sector = f.get("sector", "")
+        indust = f.get("industry", "")
+        mktcap = f.get("market_cap", "N/A")
+        country= f.get("country", "")
+
+        st.markdown(f"""
+        <div style='margin-bottom:20px;'>
+            <div style='font-family:Space Grotesk,sans-serif;
+                        font-size:1.4rem; font-weight:700;
+                        color:#e8f0fe; letter-spacing:-0.5px;'>
+                {name}
+                <span style='font-family:JetBrains Mono,monospace;
+                             font-size:0.75rem; color:#00d4aa;
+                             margin-left:10px; font-weight:400;'>
+                    {company_ticker}
+                </span>
+            </div>
+            <div style='font-family:JetBrains Mono,monospace;
+                        font-size:0.68rem; color:#7b9bc0;
+                        margin-top:4px; letter-spacing:0.05em;'>
+                {sector}
+                {'  ·  ' + indust if indust else ''}
+                {'  ·  ' + country if country else ''}
+                {'  ·  Market Cap: ' + mktcap if mktcap != 'N/A' else ''}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # ── Description ──
+        desc = f.get("description", "")
+        if desc:
+            section("BUSINESS OVERVIEW")
+            if is_beginner:
+                # Show first 300 chars for beginners
+                st.markdown(f"""
+                <div style='font-family:DM Sans,sans-serif;
+                            font-size:0.88rem; color:#7b9bc0;
+                            line-height:1.7; background:#0f2040;
+                            border:1px solid #1a3357; border-radius:6px;
+                            padding:16px 18px;'>
+                    {desc[:350]}{'...' if len(desc) > 350 else ''}
+                </div>""", unsafe_allow_html=True)
+            else:
+                with st.expander("Read full description", expanded=True):
+                    st.markdown(f"""
+                    <div style='font-family:DM Sans,sans-serif;
+                                font-size:0.85rem; color:#7b9bc0;
+                                line-height:1.7;'>
+                        {desc[:800]}{'...' if len(desc) > 800 else ''}
+                    </div>""", unsafe_allow_html=True)
+
+        # ── Two-column layout: Fundamentals + Technicals ──
+        st.markdown("<div style='margin-top:20px;'></div>",
+                    unsafe_allow_html=True)
+        fcol, tcol = st.columns(2)
+
+        with fcol:
+            section("FUNDAMENTAL METRICS")
+
+            def metric_row(label, value, note="",
+                           beginner_label=None):
+                display_label = (beginner_label
+                                 if is_beginner and beginner_label
+                                 else label)
+                color = "#e8f0fe" if value != "N/A" else "#1a3357"
+                st.markdown(f"""
+                <div style='display:flex; justify-content:space-between;
+                            align-items:center; padding:7px 0;
+                            border-bottom:1px solid #0d1b35;'>
+                    <span style='font-family:JetBrains Mono,monospace;
+                                 font-size:0.68rem; color:#7b9bc0;'>
+                        {display_label}</span>
+                    <span style='font-family:JetBrains Mono,monospace;
+                                 font-size:0.78rem; font-weight:600;
+                                 color:{color};'>{value}</span>
+                </div>""", unsafe_allow_html=True)
+
+            metric_row("P/E Ratio",
+                       str(round(float(f.get("pe_ratio",0)),1))
+                       if f.get("pe_ratio") not in ["N/A",None] else "N/A",
+                       beginner_label="Price vs Earnings (P/E)")
+            metric_row("Forward P/E",
+                       str(round(float(f.get("forward_pe",0)),1))
+                       if f.get("forward_pe") not in ["N/A",None] else "N/A",
+                       beginner_label="Expected P/E (next year)")
+            metric_row("Revenue",
+                       f.get("revenue","N/A"),
+                       beginner_label="Annual Revenue")
+            metric_row("Revenue Growth",
+                       f.get("revenue_growth","N/A"),
+                       beginner_label="How fast revenue is growing")
+            metric_row("Profit Margin",
+                       f.get("profit_margin","N/A"),
+                       beginner_label="Profit kept per ₱100 of sales")
+            metric_row("Gross Margin",
+                       f.get("gross_margin","N/A"),
+                       beginner_label="Gross profit margin")
+            metric_row("ROE",
+                       f.get("roe","N/A"),
+                       beginner_label="Return on shareholders' money")
+            metric_row("Debt/Equity",
+                       str(f.get("debt_to_equity","N/A")),
+                       beginner_label="Debt vs company value")
+            metric_row("Free Cash Flow",
+                       f.get("free_cashflow","N/A"),
+                       beginner_label="Cash generated after expenses")
+            metric_row("Dividend Yield",
+                       f.get("dividend_yield","N/A"),
+                       beginner_label="Annual dividend payment")
+
+        with tcol:
+            section("TECHNICAL SNAPSHOT")
+
+            def tech_row(label, value, color="#e8f0fe",
+                         beginner_label=None):
+                display_label = (beginner_label
+                                 if is_beginner and beginner_label
+                                 else label)
+                st.markdown(f"""
+                <div style='display:flex; justify-content:space-between;
+                            align-items:center; padding:7px 0;
+                            border-bottom:1px solid #0d1b35;'>
+                    <span style='font-family:JetBrains Mono,monospace;
+                                 font-size:0.68rem; color:#7b9bc0;'>
+                        {display_label}</span>
+                    <span style='font-family:JetBrains Mono,monospace;
+                                 font-size:0.78rem; font-weight:600;
+                                 color:{color};'>{value}</span>
+                </div>""", unsafe_allow_html=True)
+
+            price_color = "#00d4aa"
+            ret20_color = ("#00d4aa" if t.get("ret_20d",0) > 0
+                           else "#ff4d6a")
+            rsi_color   = ("#ffd166" if rsi > 65 or rsi < 35
+                           else "#e8f0fe")
+            reg_color   = ("#00d4aa" if reg == "BULL_TRENDING"
+                           else "#ff4d6a"
+                           if reg in ["BEAR_TRENDING","HIGH_VOLATILITY"]
+                           else "#ffd166")
+            sig_color   = ("#00d4aa" if sig == "BUY"
+                           else "#ff4d6a" if sig == "AVOID"
+                           else "#ffd166")
+
+            tech_row("Price",
+                     f"${t.get('price',0):.2f}",
+                     price_color)
+            tech_row("1-Day Return",
+                     f"{t.get('ret_1d',0):+.2f}%",
+                     "#00d4aa" if t.get("ret_1d",0) > 0 else "#ff4d6a")
+            tech_row("20-Day Return",
+                     f"{t.get('ret_20d',0):+.2f}%",
+                     ret20_color,
+                     beginner_label="Price change (last month)")
+            tech_row("RSI (14)",
+                     f"{rsi:.1f}",
+                     rsi_color,
+                     beginner_label="Momentum indicator (0-100)")
+            tech_row("Volatility (20d)",
+                     f"{t.get('vol_20d',0):.1f}%",
+                     beginner_label="How much price swings")
+            tech_row("Market Regime",
+                     reg, reg_color,
+                     beginner_label="Current market environment")
+            tech_row("52w High",
+                     f"${t.get('high_52w',0):.2f}")
+            tech_row("52w Low",
+                     f"${t.get('low_52w',0):.2f}")
+            tech_row("From 52w High",
+                     f"{t.get('pct_from_high',0):+.1f}%",
+                     "#ff4d6a" if t.get("pct_from_high",0) < -20
+                     else "#e8f0fe",
+                     beginner_label="Distance from yearly peak")
+            tech_row("3m ATM Call",
+                     f"${t.get('call_3m','N/A')}",
+                     beginner_label="3-month call option price")
+            tech_row("Signal",
+                     sig, sig_color,
+                     beginner_label="Our system's recommendation")
+
+            if is_beginner and rsi < 35:
+                st.markdown(f"""
+                <div style='background:#0f2040; border:1px solid #1a3357;
+                            border-left:2px solid #ffd166; border-radius:4px;
+                            padding:10px 12px; margin-top:10px;
+                            font-family:DM Sans,sans-serif; font-size:0.78rem;
+                            color:#7b9bc0;'>
+                    💡 RSI below 35 means the stock may have been
+                    falling too fast and could bounce back — but
+                    this isn't guaranteed.
+                </div>""", unsafe_allow_html=True)
+            elif is_beginner and rsi > 70:
+                st.markdown(f"""
+                <div style='background:#0f2040; border:1px solid #1a3357;
+                            border-left:2px solid #ffd166; border-radius:4px;
+                            padding:10px 12px; margin-top:10px;
+                            font-family:DM Sans,sans-serif; font-size:0.78rem;
+                            color:#7b9bc0;'>
+                    💡 RSI above 70 means the stock may have risen
+                    too quickly and a pullback is possible.
+                </div>""", unsafe_allow_html=True)
+
+        # ── Analyst View ──
+        st.markdown("<div style='margin-top:20px;'></div>",
+                    unsafe_allow_html=True)
+        section("ANALYST CONSENSUS")
+
+        rat_color = ("#00d4aa"
+                     if any(x in rat for x in ["BUY","OUTPERFORM"])
+                     else "#ff4d6a"
+                     if any(x in rat for x in ["SELL","UNDERPERFORM"])
+                     else "#ffd166")
+
+        tgt_mean = f.get("target_mean", "N/A")
+        tgt_high = f.get("target_high", "N/A")
+        tgt_low  = f.get("target_low",  "N/A")
+
+        upside_str = ""
+        if tgt_mean not in ["N/A", None] and price > 0:
+            try:
+                upside = (float(tgt_mean)/price - 1) * 100
+                upside_str = (f"+{upside:.1f}% upside"
+                              if upside > 0
+                              else f"{upside:.1f}% downside")
+            except Exception:
+                pass
+
+        a1, a2, a3, a4 = st.columns(4)
+        a1.markdown(f"""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-top:2px solid {rat_color}; border-radius:6px;
+                    padding:14px; text-align:center;'>
+            <div style='font-family:JetBrains Mono; font-size:0.6rem;
+                        color:#7b9bc0;'>CONSENSUS</div>
+            <div style='font-family:Space Grotesk; font-size:1rem;
+                        font-weight:700; color:{rat_color};
+                        margin-top:6px;'>{rat}</div>
+        </div>""", unsafe_allow_html=True)
+        a2.markdown(f"""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-top:2px solid #1a6eff; border-radius:6px;
+                    padding:14px; text-align:center;'>
+            <div style='font-family:JetBrains Mono; font-size:0.6rem;
+                        color:#7b9bc0;'>PRICE TARGET</div>
+            <div style='font-family:Space Grotesk; font-size:1rem;
+                        font-weight:700; color:#1a6eff; margin-top:6px;'>
+                ${tgt_mean if tgt_mean != 'N/A' else '—'}
+            </div>
+        </div>""", unsafe_allow_html=True)
+        a3.markdown(f"""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-top:2px solid #00d4aa; border-radius:6px;
+                    padding:14px; text-align:center;'>
+            <div style='font-family:JetBrains Mono; font-size:0.6rem;
+                        color:#7b9bc0;'>UPSIDE / DOWNSIDE</div>
+            <div style='font-family:Space Grotesk; font-size:1rem;
+                        font-weight:700;
+                        color:{"#00d4aa" if "upside" in upside_str else "#ff4d6a"};
+                        margin-top:6px;'>
+                {upside_str or "—"}
+            </div>
+        </div>""", unsafe_allow_html=True)
+        a4.markdown(f"""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-top:2px solid #7b9bc0; border-radius:6px;
+                    padding:14px; text-align:center;'>
+            <div style='font-family:JetBrains Mono; font-size:0.6rem;
+                        color:#7b9bc0;'>ANALYSTS COVERING</div>
+            <div style='font-family:Space Grotesk; font-size:1rem;
+                        font-weight:700; color:#7b9bc0; margin-top:6px;'>
+                {f.get("num_analysts", "—")}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        if is_beginner and tgt_mean not in ["N/A", None]:
+            st.markdown(f"""
+            <div style='font-family:DM Sans,sans-serif; font-size:0.82rem;
+                        color:#7b9bc0; background:#0f2040;
+                        border:1px solid #1a3357; border-radius:6px;
+                        padding:12px 16px; margin-top:10px; line-height:1.6;'>
+                💡 <strong style='color:#e8f0fe;'>What this means:</strong>
+                {f.get('num_analysts', 'Several')} professional analysts
+                who research this company for a living are saying
+                <strong style='color:{rat_color};'>{rat}</strong>,
+                with an average price target of
+                <strong style='color:#1a6eff;'>
+                    ${tgt_mean}
+                </strong>
+                (range ${tgt_low}–${tgt_high}).
+                {f"This implies {upside_str} from the current price." if upside_str else ""}
+            </div>""", unsafe_allow_html=True)
+
+        # ── Bull / Bear Cases ──
+        st.markdown("<div style='margin-top:20px;'></div>",
+                    unsafe_allow_html=True)
+        section("BULL vs BEAR ANALYSIS" if not is_beginner
+                else "WHY IT COULD GO UP OR DOWN")
+
+        if is_beginner:
+            st.markdown("""
+            <div style='font-family:DM Sans,sans-serif;
+                        font-size:0.82rem; color:#7b9bc0;
+                        margin-bottom:12px;'>
+                Here are the main reasons the stock might
+                go up (bull case) or down (bear case).
+                These are based on real financial data,
+                not opinions.
+            </div>""", unsafe_allow_html=True)
+
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            st.markdown("""
+            <div style='font-family:JetBrains Mono,monospace;
+                        font-size:0.65rem; color:#00d4aa;
+                        letter-spacing:0.15em; margin-bottom:10px;
+                        padding-bottom:4px;
+                        border-bottom:1px solid #00d4aa;'>
+                ▲ BULL CASE
+            </div>""", unsafe_allow_html=True)
+            for b in bull:
+                st.markdown(f"""
+                <div style='display:flex; gap:8px; padding:8px 0;
+                            border-bottom:1px solid #0d1b35;'>
+                    <span style='color:#00d4aa; font-size:0.8rem;
+                                 min-width:12px;'>▲</span>
+                    <span style='font-family:DM Sans,sans-serif;
+                                 font-size:0.82rem; color:#e8f0fe;
+                                 line-height:1.5;'>{b}</span>
+                </div>""", unsafe_allow_html=True)
+
+        with bcol2:
+            st.markdown("""
+            <div style='font-family:JetBrains Mono,monospace;
+                        font-size:0.65rem; color:#ff4d6a;
+                        letter-spacing:0.15em; margin-bottom:10px;
+                        padding-bottom:4px;
+                        border-bottom:1px solid #ff4d6a;'>
+                ▼ BEAR CASE
+            </div>""", unsafe_allow_html=True)
+            for b in bear:
+                st.markdown(f"""
+                <div style='display:flex; gap:8px; padding:8px 0;
+                            border-bottom:1px solid #0d1b35;'>
+                    <span style='color:#ff4d6a; font-size:0.8rem;
+                                 min-width:12px;'>▼</span>
+                    <span style='font-family:DM Sans,sans-serif;
+                                 font-size:0.82rem; color:#e8f0fe;
+                                 line-height:1.5;'>{b}</span>
+                </div>""", unsafe_allow_html=True)
+
+        # ── Disclaimer ──
+        st.markdown(f"""
+        <div style='font-family:JetBrains Mono,monospace;
+                    font-size:0.6rem; color:#1a3357; margin-top:24px;
+                    padding-top:12px; border-top:1px solid #0d1b35;
+                    line-height:1.8;'>
+            Report generated: {report.get('generated_at','')[:19]}
+            &nbsp;·&nbsp; Data: Yahoo Finance
+            &nbsp;·&nbsp; FOR RESEARCH PURPOSES ONLY
+            &nbsp;·&nbsp; NOT FINANCIAL ADVICE
+        </div>""", unsafe_allow_html=True)
+
+# ======================================================================
+# TAB 6: FINANCIAL COPILOT
+# ======================================================================
+with tab6:
+    section("FINANCIAL COPILOT")
+
+    if is_beginner:
+        st.markdown("""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-left:3px solid #00d4aa; border-radius:6px;
+                    padding:14px 18px; margin-bottom:16px;
+                    font-family:DM Sans,sans-serif; font-size:0.85rem;
+                    color:#7b9bc0; line-height:1.6;'>
+            👋 Ask me anything about investing, stocks, or finance.
+            I'll explain it in plain language. You can also ask
+            about specific stocks like "What is AAPL doing?"
+            or "Is NVDA a good buy right now?"
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-left:3px solid #00d4aa; border-radius:6px;
+                    padding:12px 18px; margin-bottom:14px;
+                    font-family:JetBrains Mono,monospace;
+                    font-size:0.75rem; color:#7b9bc0; line-height:1.7;'>
+            Query topics: inflation · interest_rates · pe_ratio ·
+            sharpe_ratio · rsi · diversification · market_regime ·
+            options · aureline_performance · any ticker (AAPL, NVDA, PHI...)
+        </div>""", unsafe_allow_html=True)
+
+    # ── Chat history ──
+    if "copilot_history" not in st.session_state:
+        st.session_state["copilot_history"] = []
+
+    # ── Chat input ──
+    question = st.text_input(
+        "Ask a question",
+        placeholder="e.g. What is the P/E ratio? / What is AAPL doing?",
+        label_visibility="collapsed",
+        key="copilot_input"
+    )
+    col_ask, col_clear = st.columns([5, 1])
+    with col_ask:
+        ask_btn = st.button("▶  ASK", key="copilot_ask")
+    with col_clear:
+        if st.button("Clear", key="copilot_clear"):
+            st.session_state["copilot_history"] = []
+            st.rerun()
+
+    if ask_btn and question.strip():
+        try:
+            from src.financial_copilot import FinancialCopilot
+            from src.database import Database as _DB2
+            _db2    = _DB2()
+            copilot = FinancialCopilot(db=_db2,
+                                        is_beginner=is_beginner)
+            response, followups, sources = copilot.answer(question)
+            _db2.close()
+
+            st.session_state["copilot_history"].append({
+                "question":  question,
+                "response":  response,
+                "followups": followups,
+                "sources":   sources,
+                "time":      datetime.now().strftime("%H:%M"),
+            })
+        except Exception as e:
+            st.error(f"Copilot error: {e}")
+
+    # ── Display history ──
+    history = st.session_state.get("copilot_history", [])
+
+    if not history:
+        # Suggested questions
+        section("TRY ASKING")
+        suggestions = [
+            "What is inflation and how does it affect stocks?",
+            "What is the current signal for AAPL?",
+            "Explain the Sharpe ratio",
+            "What is market regime detection?",
+            "How has Aureline Labs performed?",
+            "What is a P/E ratio?",
+        ] if is_beginner else [
+            "Explain the RSI indicator",
+            "What is the Aureline Labs regime detector?",
+            "Black-Scholes options pricing",
+            "Curse of dimensionality in ML",
+            "What is risk parity?",
+            "NVDA fundamentals",
+        ]
+
+        scols = st.columns(2)
+        for i, sug in enumerate(suggestions):
+            col = scols[i % 2]
+            col.markdown(f"""
+            <div style='background:#0f2040;
+                        border:1px solid #1a3357;
+                        border-radius:4px; padding:10px 14px;
+                        margin-bottom:6px; cursor:pointer;
+                        font-family:DM Sans,sans-serif;
+                        font-size:0.82rem; color:#7b9bc0;'>
+                💬 {sug}
+            </div>""", unsafe_allow_html=True)
+    else:
+        # Show conversation newest first
+        for item in reversed(history):
+            # Question bubble
+            st.markdown(f"""
+            <div style='background:#1a3357; border-radius:8px;
+                        padding:12px 16px; margin:8px 0 4px 40px;
+                        font-family:DM Sans,sans-serif;
+                        font-size:0.85rem; color:#e8f0fe;'>
+                <span style='font-family:JetBrains Mono;
+                             font-size:0.6rem; color:#7b9bc0;
+                             display:block; margin-bottom:4px;'>
+                    YOU · {item['time']}</span>
+                {item['question']}
+            </div>""", unsafe_allow_html=True)
+
+            # Response bubble
+            st.markdown(f"""
+            <div style='background:#0f2040;
+                        border:1px solid #1a3357;
+                        border-left:3px solid #00d4aa;
+                        border-radius:8px; padding:14px 18px;
+                        margin:4px 40px 4px 0;'>
+                <span style='font-family:JetBrains Mono;
+                             font-size:0.6rem; color:#00d4aa;
+                             display:block; margin-bottom:8px;'>
+                    ⬡ AURELINE COPILOT</span>
+                <div style='font-family:DM Sans,sans-serif;
+                            font-size:0.85rem; color:#e8f0fe;
+                            line-height:1.7;'>""",
+                unsafe_allow_html=True)
+            st.markdown(item["response"])
+            st.markdown("</div></div>", unsafe_allow_html=True)
+
+            # Follow-ups
+            if item.get("followups"):
+                fu_cols = st.columns(len(item["followups"][:3]))
+                for fi, fu in enumerate(item["followups"][:3]):
+                    fu_cols[fi].markdown(f"""
+                    <div style='background:#060d1f;
+                                border:1px solid #1a3357;
+                                border-radius:4px; padding:8px 10px;
+                                font-family:JetBrains Mono,monospace;
+                                font-size:0.65rem; color:#7b9bc0;
+                                cursor:pointer;'>
+                        ↪ {fu}
+                    </div>""", unsafe_allow_html=True)
 
 # ======================================================================
 # SECTION 9: FOOTER
