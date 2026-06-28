@@ -431,13 +431,14 @@ st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
 # ======================================================================
 # SECTION 8: TABS
 # ======================================================================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "OVERVIEW",
     "RESEARCH",
     "ML vs SMA",
     "🧠 INTELLIGENCE",
     "🏢 COMPANY",
-    "💬 COPILOT"
+    "💬 COPILOT",
+    "📊 PORTFOLIO"
 ])
 
 # ======================================================================
@@ -1635,6 +1636,518 @@ with tab6:
                                 cursor:pointer;'>
                         ↪ {fu}
                     </div>""", unsafe_allow_html=True)
+
+# ======================================================================
+# TAB 7: PORTFOLIO INTELLIGENCE
+# ======================================================================
+with tab7:
+    section("PORTFOLIO INTELLIGENCE")
+
+    if is_beginner:
+        st.markdown("""
+        <div style='background:#0f2040; border:1px solid #1a3357;
+                    border-left:3px solid #00d4aa; border-radius:6px;
+                    padding:14px 18px; margin-bottom:16px;
+                    font-family:DM Sans,sans-serif; font-size:0.85rem;
+                    color:#7b9bc0; line-height:1.6;'>
+            Build your own portfolio here. Select the stocks you want
+            to invest in, choose how to split your money, and see what
+            would have happened historically — including the best and
+            worst case scenarios from 5,000 simulations.
+        </div>""", unsafe_allow_html=True)
+
+    # ── Portfolio controls ──
+    pcol1, pcol2 = st.columns([3, 2])
+
+    with pcol1:
+        st.markdown("""
+        <div style='font-family:JetBrains Mono,monospace;
+                    font-size:0.6rem; color:#7b9bc0;
+                    letter-spacing:0.15em; margin-bottom:6px;'>
+            SELECT ASSETS
+        </div>""", unsafe_allow_html=True)
+
+        available_assets = ["AAPL", "MSFT", "NVDA", "JPM",
+                            "XOM", "JNJ", "TSLA", "SPY"]
+        selected_assets  = st.multiselect(
+            "Assets",
+            options=available_assets,
+            default=["AAPL", "MSFT", "NVDA", "JPM",
+                     "XOM", "JNJ"],
+            label_visibility="collapsed"
+        )
+
+    with pcol2:
+        st.markdown("""
+        <div style='font-family:JetBrains Mono,monospace;
+                    font-size:0.6rem; color:#7b9bc0;
+                    letter-spacing:0.15em; margin-bottom:6px;'>
+            ALLOCATION STRATEGY
+        </div>""", unsafe_allow_html=True)
+        strategy_choice = st.selectbox(
+            "Strategy",
+            options=["Equal Weight (1/N)",
+                     "Risk Parity",
+                     "Momentum Weighted"],
+            label_visibility="collapsed"
+        )
+
+    port_start = st.date_input(
+        "Portfolio Start Date",
+        value=pd.Timestamp("2021-01-01"),
+        label_visibility="visible"
+    ).strftime("%Y-%m-%d")
+
+    run_portfolio = st.button("▶  BUILD PORTFOLIO", key="port_btn")
+
+    if not selected_assets:
+        st.info("Select at least 2 assets to build a portfolio.")
+    elif run_portfolio or "portfolio_result" in st.session_state:
+
+        if run_portfolio:
+            with st.spinner("Loading price data and running "
+                            "portfolio analysis..."):
+                try:
+                    from src.portfolio import Portfolio
+
+                    # Load prices
+                    prices = {}
+                    for t in selected_assets:
+                        data = get_price_data(
+                            t, port_start, end_date)
+                        if data is not None and len(data) > 60:
+                            prices[t] = data["Close"]
+
+                    if len(prices) < 2:
+                        st.error("Need at least 2 assets with "
+                                 "valid price data.")
+                    else:
+                        port = Portfolio(prices,
+                                         starting_cash=100000)
+
+                        # Select weights
+                        if strategy_choice == "Equal Weight (1/N)":
+                            weights = port.equal_weight()
+                        elif strategy_choice == "Risk Parity":
+                            weights = port.risk_parity()
+                        else:
+                            weights = port.momentum_weighted()
+
+                        # Simulate
+                        pv   = port.simulate(
+                            weights,
+                            rebalance_frequency="monthly")
+                        corr = port.correlation_matrix()
+                        stats = port.asset_statistics()
+                        dr   = port.diversification_ratio(weights)
+                        pv_vol = port.portfolio_volatility(weights)
+
+                        # Metrics
+                        ret  = (pv[-1]/100000 - 1) * 100
+                        ps   = pd.Series(pv)
+                        dret = ps.pct_change().dropna()
+                        ex   = dret - 0.05/252
+                        sh   = round(
+                            (ex.mean()/ex.std())*np.sqrt(252), 3
+                        ) if ex.std() > 0 else 0.0
+                        peak = ps.cummax()
+                        mdd_p= round(
+                            ((ps-peak)/peak).min()*100, 2)
+
+                        st.session_state["portfolio_result"] = {
+                            "pv": pv, "corr": corr,
+                            "stats": stats, "weights": weights,
+                            "dr": dr, "pv_vol": pv_vol,
+                            "ret": ret, "sharpe": sh,
+                            "mdd": mdd_p, "prices": prices,
+                            "port": port,
+                            "strategy": strategy_choice,
+                        }
+                except Exception as e:
+                    st.error(f"Portfolio error: {e}")
+
+        # ── Display results ──
+        result = st.session_state.get("portfolio_result")
+        if result:
+            pv       = result["pv"]
+            corr     = result["corr"]
+            weights  = result["weights"]
+            ret      = result["ret"]
+            sh       = result["sharpe"]
+            mdd_p    = result["mdd"]
+            dr       = result["dr"]
+            pv_vol   = result["pv_vol"]
+
+            # ── Top metrics ──
+            st.markdown("<div style='margin-top:16px;'></div>",
+                        unsafe_allow_html=True)
+
+            if is_beginner:
+                m1, m2, m3 = st.columns(3)
+                ret_val, ret_desc = plain_return(ret)
+                m1.markdown(f"""
+                <div class='bcard'>
+                    <div class='bcard-label'>Total Return</div>
+                    <div class='bcard-value'
+                         style='color:{"#00d4aa" if ret > 0 else "#ff4d6a"};'>
+                        {ret_val}
+                    </div>
+                    <div class='bcard-desc'>
+                        ₱100,000 grew to
+                        ₱{pv[-1]:,.0f}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                m2.markdown(f"""
+                <div class='bcard'>
+                    <div class='bcard-label'>Consistency</div>
+                    <div class='bcard-value'>{plain_sharpe(sh).split("—")[0].strip()}</div>
+                    <div class='bcard-desc'>
+                        {plain_sharpe(sh).split("—")[1].strip()
+                         if "—" in plain_sharpe(sh) else ""}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                m3.markdown(f"""
+                <div class='bcard'>
+                    <div class='bcard-label'>Worst Period</div>
+                    <div class='bcard-value'
+                         style='color:{"#ffd166" if abs(mdd_p) < 20 else "#ff4d6a"};'>
+                        {mdd_p:.1f}%
+                    </div>
+                    <div class='bcard-desc'>
+                        {plain_drawdown(mdd_p)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                m1,m2,m3,m4,m5 = st.columns(5)
+                m1.metric("Total Return",    f"{ret:+.2f}%")
+                m2.metric("Sharpe Ratio",    f"{sh:.3f}")
+                m3.metric("Max Drawdown",    f"{mdd_p:.2f}%")
+                m4.metric("Portfolio Vol",   f"{pv_vol*100:.1f}%")
+                m5.metric("Diversif. Ratio", f"{dr:.3f}")
+
+            # ── Allocation weights ──
+            st.markdown("<div style='margin-top:20px;'></div>",
+                        unsafe_allow_html=True)
+            section("ALLOCATION WEIGHTS")
+
+            w_cols = st.columns(len(weights))
+            colors_w = ["#00d4aa","#1a6eff","#ffd166",
+                        "#ff4d6a","#7b61ff","#06d6a0",
+                        "#118ab2","#8ed4b4"]
+            for idx, (t, w) in enumerate(
+                    sorted(weights.items(),
+                           key=lambda x: x[1], reverse=True)):
+                col = w_cols[idx % len(w_cols)]
+                col.markdown(f"""
+                <div style='background:#0f2040;
+                            border:1px solid #1a3357;
+                            border-top:2px solid
+                            {colors_w[idx % len(colors_w)]};
+                            border-radius:6px; padding:12px;
+                            text-align:center;'>
+                    <div style='font-family:JetBrains Mono;
+                                font-size:0.6rem; color:#7b9bc0;'>
+                        {t}</div>
+                    <div style='font-family:Space Grotesk;
+                                font-size:1.1rem; font-weight:700;
+                                color:{colors_w[idx%len(colors_w)]};
+                                margin-top:4px;'>
+                        {w:.0%}</div>
+                </div>""", unsafe_allow_html=True)
+
+            # ── Portfolio equity curve ──
+            st.markdown("<div style='margin-top:20px;'></div>",
+                        unsafe_allow_html=True)
+            section("PORTFOLIO PERFORMANCE")
+
+            fig_p, ax_p = plt.subplots(figsize=(13, 4))
+            aureline_chart_style(ax_p, fig_p)
+            ax_p.plot(pv, color="#00d4aa",
+                      linewidth=1.8, label=result["strategy"])
+            ax_p.axhline(y=100000, color="#1a3357",
+                         linestyle="--", linewidth=1)
+            ax_p.yaxis.set_major_formatter(
+                mticker.StrMethodFormatter("${x:,.0f}"))
+            ax_p.set_ylabel("Portfolio Value ($)",
+                            fontsize=8, color="#7b9bc0")
+            ax_p.legend(fontsize=8, facecolor="#0f2040",
+                        edgecolor="#1a3357",
+                        labelcolor="#7b9bc0")
+
+            if is_beginner:
+                ax_p.set_title(
+                    f"₱100,000 invested → ₱{pv[-1]:,.0f}",
+                    color="#7b9bc0", fontsize=9,
+                    fontfamily="monospace")
+
+            plt.tight_layout()
+            st.pyplot(fig_p); plt.close()
+
+            # ── Correlation matrix ──
+            st.markdown("<div style='margin-top:20px;'></div>",
+                        unsafe_allow_html=True)
+            section("CORRELATION MATRIX" if not is_beginner
+                    else "HOW MUCH DO THESE STOCKS MOVE TOGETHER?")
+
+            if is_beginner:
+                st.markdown("""
+                <div style='font-family:DM Sans,sans-serif;
+                            font-size:0.82rem; color:#7b9bc0;
+                            margin-bottom:10px; line-height:1.5;'>
+                    Numbers close to <strong style='color:#00d4aa;'>
+                    +1.0</strong> mean the stocks move together
+                    (less diversification). Numbers close to
+                    <strong style='color:#ff4d6a;'>0.0 or negative
+                    </strong> mean they move independently
+                    (better diversification).
+                </div>""", unsafe_allow_html=True)
+
+            tickers_list = list(corr.columns)
+            fig_c, ax_c  = plt.subplots(
+                figsize=(max(6, len(tickers_list)*1.2),
+                         max(4, len(tickers_list)*0.9)))
+            aureline_chart_style(ax_c, fig_c)
+            im = ax_c.imshow(corr.values, cmap="RdYlGn",
+                              vmin=-1, vmax=1, aspect="auto")
+            ax_c.set_xticks(range(len(tickers_list)))
+            ax_c.set_yticks(range(len(tickers_list)))
+            ax_c.set_xticklabels(tickers_list,
+                                  fontsize=8, color="#7b9bc0")
+            ax_c.set_yticklabels(tickers_list,
+                                  fontsize=8, color="#7b9bc0")
+            for i in range(len(tickers_list)):
+                for j in range(len(tickers_list)):
+                    ax_c.text(j, i,
+                              f"{corr.values[i,j]:.2f}",
+                              ha="center", va="center",
+                              fontsize=7, color="#060d1f",
+                              fontweight="bold")
+            ax_c.set_title(
+                "Correlation Matrix — 1.0 = move together, "
+                "0.0 = independent",
+                color="#7b9bc0", fontsize=8,
+                fontfamily="monospace")
+            plt.tight_layout()
+            st.pyplot(fig_c); plt.close()
+
+            # ── High / Low correlation pairs ──
+            try:
+                port_obj = result["port"]
+                high_pairs = port_obj.find_high_correlation_pairs(0.6)
+                low_pairs  = port_obj.find_low_correlation_pairs(0.3)
+
+                cp1, cp2 = st.columns(2)
+                with cp1:
+                    if high_pairs:
+                        st.markdown(f"""
+                        <div style='background:#0f2040;
+                                    border:1px solid #1a3357;
+                                    border-left:2px solid #ff4d6a;
+                                    border-radius:4px; padding:12px 14px;'>
+                            <div style='font-family:JetBrains Mono;
+                                        font-size:0.6rem; color:#ff4d6a;
+                                        margin-bottom:6px;'>
+                                HIGH CORRELATION — REDUNDANT RISK</div>
+                            {''.join([
+                                f"<div style='font-family:JetBrains Mono;"
+                                f"font-size:0.72rem; color:#7b9bc0;"
+                                f"padding:3px 0;'>{t1} ↔ {t2}: {c:+.3f}</div>"
+                                for t1, t2, c in high_pairs[:4]
+                            ])}
+                        </div>""", unsafe_allow_html=True)
+                with cp2:
+                    if low_pairs:
+                        st.markdown(f"""
+                        <div style='background:#0f2040;
+                                    border:1px solid #1a3357;
+                                    border-left:2px solid #00d4aa;
+                                    border-radius:4px; padding:12px 14px;'>
+                            <div style='font-family:JetBrains Mono;
+                                        font-size:0.6rem; color:#00d4aa;
+                                        margin-bottom:6px;'>
+                                LOW CORRELATION — GENUINE DIVERSIFICATION</div>
+                            {''.join([
+                                f"<div style='font-family:JetBrains Mono;"
+                                f"font-size:0.72rem; color:#7b9bc0;"
+                                f"padding:3px 0;'>{t1} ↔ {t2}: {c:+.3f}</div>"
+                                for t1, t2, c in low_pairs[:4]
+                            ])}
+                        </div>""", unsafe_allow_html=True)
+            except Exception:
+                pass
+
+            # ── Monte Carlo ──
+            st.markdown("<div style='margin-top:20px;'></div>",
+                        unsafe_allow_html=True)
+            section("MONTE CARLO RISK SIMULATION" if not is_beginner
+                    else "WHAT COULD HAPPEN IN THE FUTURE?")
+
+            if is_beginner:
+                st.markdown("""
+                <div style='font-family:DM Sans,sans-serif;
+                            font-size:0.82rem; color:#7b9bc0;
+                            margin-bottom:10px; line-height:1.5;'>
+                    We ran <strong>1,000 simulations</strong> of what
+                    could happen to your portfolio based on historical
+                    patterns. The shaded area shows the range of
+                    likely outcomes.
+                </div>""", unsafe_allow_html=True)
+
+            try:
+                from src.monte_carlo import MonteCarloSimulator
+                with st.spinner("Running Monte Carlo simulation..."):
+                    n_sims = 1000 if is_beginner else 3000
+                    mc     = MonteCarloSimulator(
+                        pv, n_simulations=n_sims,
+                        block_size=20)
+                    paths   = mc.generate_paths()
+                    mc_res  = mc.analyze(paths)
+
+                # Monte Carlo chart
+                fig_mc, ax_mc = plt.subplots(figsize=(13, 4))
+                aureline_chart_style(ax_mc, fig_mc)
+
+                # Draw sample paths
+                sample_idx = np.random.choice(
+                    n_sims, min(150, n_sims), replace=False)
+                for idx in sample_idx:
+                    ax_mc.plot(paths[idx], color="#00d4aa",
+                               alpha=0.02, linewidth=0.5)
+
+                # Percentile bands
+                p5  = np.percentile(paths, 5,  axis=0)
+                p25 = np.percentile(paths, 25, axis=0)
+                p75 = np.percentile(paths, 75, axis=0)
+                p95 = np.percentile(paths, 95, axis=0)
+                med = np.median(paths, axis=0)
+
+                ax_mc.fill_between(range(len(p5)),
+                                    p5, p95, alpha=0.12,
+                                    color="#00d4aa")
+                ax_mc.fill_between(range(len(p25)),
+                                    p25, p75, alpha=0.22,
+                                    color="#00d4aa")
+                ax_mc.plot(med, color="#00d4aa",
+                           linewidth=1.8, label="Median path")
+                ax_mc.plot(pv, color="#ffffff",
+                           linewidth=1.2, linestyle="--",
+                           alpha=0.7, label="Historical")
+                ax_mc.axhline(y=100000, color="#1a3357",
+                              linestyle="--", linewidth=0.8)
+                ax_mc.yaxis.set_major_formatter(
+                    mticker.StrMethodFormatter("${x:,.0f}"))
+                ax_mc.set_ylabel("Portfolio Value ($)",
+                                  fontsize=8, color="#7b9bc0")
+                ax_mc.legend(fontsize=8, facecolor="#0f2040",
+                             edgecolor="#1a3357",
+                             labelcolor="#7b9bc0")
+                plt.tight_layout()
+                st.pyplot(fig_mc); plt.close()
+
+                # MC metrics
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                p_loss   = mc_res["prob_loss"]
+                med_ret  = mc_res["median_return"]
+                p5_ret   = mc_res["p5_return"]
+                p95_ret  = mc_res["p95_return"]
+                worst_dd = mc_res["worst_max_dd"]
+
+                if is_beginner:
+                    mc1.markdown(f"""
+                    <div class='bcard'>
+                        <div class='bcard-label'>Chance of Loss</div>
+                        <div class='bcard-value'
+                             style='color:{"#00d4aa" if p_loss < 5 else "#ffd166"};'>
+                            {p_loss:.1f}%</div>
+                        <div class='bcard-desc'>
+                            Probability of losing money
+                            over the full period</div>
+                    </div>""", unsafe_allow_html=True)
+                    mc2.markdown(f"""
+                    <div class='bcard'>
+                        <div class='bcard-label'>Typical Outcome</div>
+                        <div class='bcard-value'
+                             style='color:#00d4aa;'>
+                            +{med_ret:.0f}%</div>
+                        <div class='bcard-desc'>
+                            Median return across
+                            all simulations</div>
+                    </div>""", unsafe_allow_html=True)
+                    mc3.markdown(f"""
+                    <div class='bcard'>
+                        <div class='bcard-label'>Bad Case (5%)</div>
+                        <div class='bcard-value'
+                             style='color:#ffd166;'>
+                            {p5_ret:+.0f}%</div>
+                        <div class='bcard-desc'>
+                            The worst 5% of scenarios
+                            still produced this return</div>
+                    </div>""", unsafe_allow_html=True)
+                    mc4.markdown(f"""
+                    <div class='bcard'>
+                        <div class='bcard-label'>Worst Drawdown</div>
+                        <div class='bcard-value'
+                             style='color:#ff4d6a;'>
+                            {worst_dd:.1f}%</div>
+                        <div class='bcard-desc'>
+                            Biggest simulated loss
+                            from peak to trough</div>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    mc1.metric("P(Loss)",
+                               f"{p_loss:.1f}%")
+                    mc2.metric("Median Return",
+                               f"{med_ret:+.1f}%")
+                    mc3.metric("5th Pct Return",
+                               f"{p5_ret:+.1f}%")
+                    mc4.metric("Worst Simulated DD",
+                               f"{worst_dd:.1f}%")
+
+                # Historical vs percentile context
+                hist_ret = ret
+                pct_rank = float(
+                    np.mean(
+                        mc_res["_final_returns"] < hist_ret/100
+                    ) * 100
+                )
+                st.markdown(f"""
+                <div style='background:#0f2040;
+                            border:1px solid #1a3357;
+                            border-left:3px solid #ffd166;
+                            border-radius:6px; padding:12px 18px;
+                            margin-top:12px;
+                            font-family:{'DM Sans' if is_beginner
+                                         else 'JetBrains Mono'},
+                                         {'sans-serif' if is_beginner
+                                          else 'monospace'};
+                            font-size:0.82rem; color:#7b9bc0;
+                            line-height:1.6;'>
+                    {'💡' if is_beginner else ''}
+                    The historical return of
+                    <strong style='color:#e8f0fe;'>
+                        {hist_ret:+.1f}%</strong>
+                    sits at the
+                    <strong style='color:#ffd166;'>
+                        {pct_rank:.1f}th percentile</strong>
+                    of {n_sims:,} simulated paths —
+                    {'meaning history gave us a slightly above-average outcome, but not an unusually lucky one.' if is_beginner
+                     else f'confirming the backtest result is not an outlier — {pct_rank:.1f}% of paths underperformed the historical path.'}
+                </div>""", unsafe_allow_html=True)
+
+            except Exception as e:
+                st.warning(f"Monte Carlo unavailable: {e}")
+
+            # ── Asset statistics table ──
+            if not is_beginner:
+                st.markdown("<div style='margin-top:20px;'></div>",
+                            unsafe_allow_html=True)
+                section("INDIVIDUAL ASSET STATISTICS")
+                try:
+                    stats_df = result["stats"].round(3)
+                    st.dataframe(stats_df,
+                                 use_container_width=True)
+                except Exception:
+                    pass
 
 # ======================================================================
 # SECTION 9: FOOTER
